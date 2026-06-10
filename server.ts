@@ -18,6 +18,27 @@ const players: PlayerMap = {};
 const rooms: RoomMap = {};
 const socketToPlayerId: Record<string, string> = {};
 
+export interface Report {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  targetId: string;
+  targetName: string;
+  reason: string;
+  timestamp: number;
+}
+export const reports: Report[] = [];
+
+function broadcastToAdmins(io: any) {
+  const adminIds = Object.values(players).filter(p => p.isAdmin).map(p => p.id);
+  for (const id of adminIds) {
+    const p = players[id];
+    if (p && p.socketId) {
+      io.to(p.socketId).emit('updateReports', reports);
+    }
+  }
+}
+
 if (bot) {
   bot.on('message', (msg) => {
     if (msg.chat.id.toString() !== TELEGRAM_ADMIN_ID) return;
@@ -122,6 +143,7 @@ async function startServer() {
         nickname: dbUser.nickname,
         avatar: dbUser.avatar,
         coins: dbUser.coins,
+        isAdmin: !!dbUser.is_admin,
         status: dbUser.status as any,
         vipColor: dbUser.vip_color,
         matchesPlayed: dbUser.matches_played,
@@ -188,7 +210,7 @@ async function startServer() {
       }
     });
 
-    socket.on('createRoom', (name, isPrivate, maxPlayers) => {
+    socket.on('createRoom', (name, isPrivate, maxPlayers, password) => {
       const pId = socketToPlayerId[socket.id];
       const p = players[pId];
       if (!p) return;
@@ -204,6 +226,7 @@ async function startServer() {
         name: name || 'Room ' + Math.floor(Math.random() * 1000),
         hostId: pId,
         isPrivate,
+        password,
         maxPlayers,
         players: [pId],
         status: 'WAITING'
@@ -216,14 +239,14 @@ async function startServer() {
       broadcastState(io);
     });
 
-    socket.on('joinRoom', (roomId) => {
+    socket.on('joinRoom', (roomId, password) => {
       const pId = socketToPlayerId[socket.id];
       const p = players[pId];
       if (!p || !rooms[roomId]) return;
       
       // AFK & Leaver Protection (Система 'Узы матча')
       if (p.status === 'IN_GAME' || p.status === 'PENALTY') {
-        socket.emit('penaltyAlert', 'Вы не можете зайти в новую игру, пока не завершился ваш предыдущий матч');
+        socket.emit('error', 'Вы не можете зайти в новую игру, пока не завершился ваш предыдущий матч');
         return;
       }
 
@@ -233,6 +256,10 @@ async function startServer() {
       }
 
       const room = rooms[roomId];
+      if (room.isPrivate && room.password !== password) {
+         socket.emit('error', 'Неверный пароль');
+         return;
+      }
       if (room.players.length >= room.maxPlayers) {
         socket.emit('error', 'Комната полна');
         return;
@@ -494,13 +521,55 @@ async function startServer() {
     });
 
     socket.on('reportPlayer', (targetId, reason, comment) => {
+      const pId = socketToPlayerId[socket.id];
+      const reporter = players[pId]?.nickname || 'Unknown';
+      const target = players[targetId]?.nickname || targetId;
+      
+      reports.push({
+        id: 'rep_' + Date.now(),
+        reporterId: pId,
+        reporterName: reporter,
+        targetId: targetId,
+        targetName: target,
+        reason: `${reason} - ${comment}`,
+        timestamp: Date.now()
+      });
+      broadcastToAdmins(io);
+
       if (bot && TELEGRAM_ADMIN_ID) {
-        const pId = socketToPlayerId[socket.id];
-        const reporter = players[pId]?.nickname || 'Unknown';
-        const target = players[targetId]?.nickname || targetId;
         const msg = `🚨 РЕПОРТ\nОт: ${reporter} (ID: ${pId})\nНа: ${target} (ID: ${targetId})\nПричина: ${reason}\nКомментарий: ${comment}\n\nЧтобы забанить: /ban ${targetId}`;
         bot.sendMessage(TELEGRAM_ADMIN_ID, msg);
       }
+    });
+
+    socket.on('getReports', () => {
+       const pId = socketToPlayerId[socket.id];
+       if (players[pId]?.isAdmin) {
+          socket.emit('updateReports', reports);
+       }
+    });
+
+    socket.on('adminAction', (action, targetId) => {
+       const pId = socketToPlayerId[socket.id];
+       if (!players[pId]?.isAdmin) return;
+       
+       if (action === 'ban') {
+          banUser(targetId);
+          const tP = players[targetId];
+          if (tP) {
+             tP.status = 'PENALTY';
+             if (tP.socketId) {
+                io.to(tP.socketId).emit('error', 'Ваш аккаунт заблокирован администратором.');
+                io.to(tP.socketId).disconnectSockets(true);
+             }
+             delete players[targetId];
+          }
+       } else if (action === 'dismiss') {
+          // just remove report
+          const idx = reports.findIndex(r => r.targetId === targetId);
+          if (idx !== -1) reports.splice(idx, 1);
+          broadcastToAdmins(io);
+       }
     });
   });
 

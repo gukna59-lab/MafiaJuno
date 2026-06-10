@@ -53,6 +53,13 @@ export interface DBUser {
   vip_color: string;
   matches_played: number;
   wins: number;
+  is_admin: number;
+}
+
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;`);
+} catch (e) {
+  // Ignore
 }
 
 export function addStats(id: string, isWin: boolean) {

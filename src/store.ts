@@ -7,6 +7,7 @@ interface AppState {
   players: PlayerMap;
   rooms: RoomMap;
   messages: ChatMessage[];
+  reports: any[];
   myId: string | null;
   error: string | null;
   startTimer: number | null;
@@ -20,6 +21,7 @@ export const useStore = create<AppState>((set, get) => ({
   players: {},
   rooms: {},
   messages: [],
+  reports: [],
   myId: null,
   error: null,
   startTimer: null,
@@ -56,6 +58,10 @@ export const useStore = create<AppState>((set, get) => ({
 
     socket.on('chatMessage', (msg) => {
       set((state) => ({ messages: [...state.messages, msg] }));
+    });
+
+    socket.on('updateReports', (reports) => {
+      set({ reports });
     });
 
     socket.on('error', (msg) => {

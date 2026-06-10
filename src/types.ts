@@ -7,6 +7,7 @@ export interface Player {
   nickname: string;
   avatar: string;
   coins: number;
+  isAdmin?: boolean;
   status: 'IN_MENU' | 'IN_ROOM' | 'IN_GAME' | 'PENALTY';
   roomId?: string; // Currently joined room
   // Game state
@@ -33,6 +34,7 @@ export interface Room {
   name: string;
   hostId: string;
   isPrivate: boolean;
+  password?: string;
   maxPlayers: number;
   players: string[]; // Player IDs
   status: 'WAITING' | 'STARTING' | 'IN_GAME' | 'FINISHED';
@@ -63,6 +65,7 @@ export interface ServerToClientEvents {
   stateSync: (data: { players: PlayerMap; rooms: RoomMap }) => void;
   myProfile: (profile: Player) => void;
   chatMessage: (msg: ChatMessage) => void;
+  updateReports: (reports: any[]) => void;
   error: (msg: string) => void;
   kicked: () => void;
   penaltyAlert: (msg: string) => void;
@@ -76,9 +79,9 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   joinGlobal: (data: { id: string, nickname: string, avatar?: string }) => void;
   updateProfile: (nickname: string, avatar: string) => void;
-  createRoom: (name: string, isPrivate: boolean, maxPlayers: number) => void;
+  createRoom: (name: string, isPrivate: boolean, maxPlayers: number, password?: string) => void;
 
-  joinRoom: (roomId: string) => void;
+  joinRoom: (roomId: string, password?: string) => void;
   leaveRoom: () => void;
   sendChat: (text: string, isGlobal: boolean, isMafiaOnly?: boolean) => void;
   
@@ -91,6 +94,7 @@ export interface ClientToServerEvents {
   buyItem: (itemId: string) => void;
 
   reportPlayer: (targetId: string, reason: string, comment: string) => void;
-  adminAction: (action: string, payload: any) => void; // Simple admin RPC
+  getReports: () => void;
+  adminAction: (action: 'ban' | 'dismiss', targetId: string) => void;
   invitePlayer: (targetId: string) => void;
 }
