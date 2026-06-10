@@ -2,19 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-// Using a persistent location or fallback to current dir
-let dbDir = process.env.DB_DIR || (process.env.RENDER ? '/var/data' : process.cwd());
-
-try {
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
-} catch (e) {
-  console.warn(`Could not create directory ${dbDir}, falling back to current working directory.`);
-  dbDir = process.cwd();
-}
-
-const dbPath = path.join(dbDir, 'mafia_juno.db');
+// Используем текущую директорию вместо закрытой /var/data на бесплатных тарифах
+const dbPath = path.join(process.cwd(), 'mafia_juno.db');
 let db;
 try {
   db = new Database(dbPath);

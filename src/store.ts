@@ -33,8 +33,25 @@ export const useStore = create<AppState>((set, get) => ({
       socket.emit('joinGlobal', data);
     });
 
+    socket.on('myProfile', (profile) => {
+      set(state => ({
+        myId: profile.id,
+        players: { ...state.players, [profile.id]: profile }
+      }));
+    });
+
     socket.on('stateSync', ({ players, rooms }) => {
-      set({ players, rooms });
+      set(state => {
+        const myId = state.myId;
+        const myPlayer = myId ? state.players[myId] : null;
+        
+        // Preserve local role since broadcast strips it for alive players
+        if (myId && myPlayer && myPlayer.role && players[myId]) {
+           players[myId].role = myPlayer.role;
+        }
+
+        return { players, rooms };
+      });
     });
 
     socket.on('chatMessage', (msg) => {

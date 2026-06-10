@@ -47,9 +47,34 @@ if (bot) {
   });
 }
 
-// Helper: Sync State to everyone
 function broadcastState(io: Server<ClientToServerEvents, ServerToClientEvents>) {
-  io.emit('stateSync', { players, rooms });
+  // Send light state to everyone (only necessary parts)
+  const sanitizedPlayers: PlayerMap = {};
+  Object.keys(players).forEach(id => {
+     const p = players[id];
+     // Only send role info if player is dead OR the game is over. 
+     // DO NOT SEND roles of alive players to anyone!
+     const pRoom = p.roomId ? rooms[p.roomId] : null;
+     const isGameOver = pRoom?.status === 'FINISHED';
+     
+     sanitizedPlayers[id] = {
+        ...p,
+        role: (p.isAlive === false || isGameOver) ? p.role : undefined, // Hide true role for alive!
+     };
+  });
+  
+  io.sockets.sockets.forEach(socket => {
+      // For each connected user, send them the state, but embed THEIR OWN role back
+      // since they need to know it for their UI
+      // For some reason socket.id maps to multiple sockets or something... actually socket is a socket instance.
+      // Wait, socketToPlayerId is inside the io connection scope, so it's not accessible here globally.
+      // We will just expose real roles to the socket if needed via a direct hit, or client tracks it via internal state.
+      // Easiest is to keep roles secret in the broadcast and just emit a targeted "myRole" if it's missing, or maybe emit state targeting their IDs.
+  });
+
+  // Since socketToPlayerId is not available globally, we'll just emit everything to everyone
+  // BUT we will hide ALL alive roles.
+  io.emit('stateSync', { players: sanitizedPlayers, rooms });
 }
 
 // Timer management
@@ -105,6 +130,14 @@ async function startServer() {
          socket.emit('penaltyAlert', 'У вас активный штраф за выход из незаконченной игры.');
       }
 
+      if (dbUser.status === 'IN_GAME' || dbUser.status === 'IN_ROOM') {
+         // Auto rejoin channel socket wise if they belong to a room still
+         const existingPlayer = players[id];
+         if (existingPlayer && existingPlayer.roomId) {
+            socket.join(existingPlayer.roomId);
+         }
+      }
+
       broadcastState(io);
     });
 
@@ -137,6 +170,18 @@ async function startServer() {
             }
          } else {
             socket.emit('error', 'Недостаточно монет (нужно 50).');
+         }
+      } else if (itemId === 'boost_don' || itemId === 'boost_sheriff' || itemId === 'armor') {
+         if (p.coins >= 100) {
+            if (spendCoins(pId, 100)) {
+               p.coins -= 100;
+               p.inventory = p.inventory || [];
+               p.inventory.push(itemId);
+               socket.emit('error', 'Преимущество куплено! Оно хранится в инвентаре.');
+               broadcastState(io);
+            }
+         } else {
+            socket.emit('error', 'Недостаточно монет (нужно 100).');
          }
       }
     });
@@ -178,6 +223,11 @@ async function startServer() {
       if (p.status === 'IN_GAME' || p.status === 'PENALTY') {
         socket.emit('penaltyAlert', 'Вы не можете зайти в новую игру, пока не завершился ваш предыдущий матч');
         return;
+      }
+
+      // If player already in another room, force leave it
+      if (p.roomId) {
+        handleLeaveRoom(io, socket.id);
       }
 
       const room = rooms[roomId];
@@ -468,13 +518,52 @@ function startGameLogic(io: Server<ClientToServerEvents, ServerToClientEvents>, 
 
   const roles = getRolesForPlayerCount(room.players.length);
   
-  room.players.forEach((pid, index) => {
+  // Appply boosts
+  const pIds = [...room.players];
+  const dons = pIds.filter(id => players[id]?.inventory?.includes('boost_don')).sort(() => Math.random() - 0.5);
+  const sheriffs = pIds.filter(id => players[id]?.inventory?.includes('boost_sheriff')).sort(() => Math.random() - 0.5);
+  
+  if (dons.length > 0) {
+     const donIdx = roles.indexOf('DON');
+     if (donIdx !== -1) {
+        roles.splice(donIdx, 1);
+        room.players.forEach(pid => {
+           if (pid === dons[0]) {
+              players[pid]!.role = 'DON';
+              players[pid]!.inventory = players[pid]!.inventory!.filter(i => i !== 'boost_don');
+           }
+        });
+     }
+  }
+
+  if (sheriffs.length > 0) {
+     const shIdx = roles.indexOf('SHERIFF');
+     if (shIdx !== -1) {
+        roles.splice(shIdx, 1);
+        room.players.forEach(pid => {
+           if (pid === sheriffs[0]) {
+              players[pid]!.role = 'SHERIFF';
+              players[pid]!.inventory = players[pid]!.inventory!.filter(i => i !== 'boost_sheriff');
+           }
+        });
+     }
+  }
+
+  room.players.forEach((pid) => {
     const p = players[pid];
     if (p) {
+      if (!p.role) {
+         p.role = roles.pop();
+      }
       p.status = 'IN_GAME';
-      p.role = roles[index];
       p.isAlive = true;
       p.activeEffects = [];
+      
+      // Let the specific player know their specific role since it is stripped from broadcast
+      const socketIds = Object.keys(socketToPlayerId).filter(sid => socketToPlayerId[sid] === pid);
+      socketIds.forEach(sid => {
+         io.to(sid).emit('myProfile', p); // this contains the role
+      });
     }
   });
 
@@ -586,8 +675,13 @@ function advancePhase(io: Server<ClientToServerEvents, ServerToClientEvents>, ro
          } else {
             const victim = players[mafiaTarget];
             if (victim && victim.isAlive) {
-               victim.isAlive = false;
-               room.gameLog.push(`Ночью был убит ${victim.nickname}. Роль: ${victim.role}`);
+               if (victim.inventory && victim.inventory.includes('armor')) {
+                   victim.inventory = victim.inventory.filter(i => i !== 'armor');
+                   room.gameLog.push(`Ночью мафия стреляла в ${victim.nickname}, но бронежилет спас ему жизнь!`);
+               } else {
+                   victim.isAlive = false;
+                   room.gameLog.push(`Ночью был убит ${victim.nickname}. Роль: ${victim.role}`);
+               }
             }
          }
       } else {
@@ -743,6 +837,17 @@ function resetStartTimer(io: Server<ClientToServerEvents, ServerToClientEvents>,
     const room = rooms[roomId];
 
     if (room) {
+      if (room.status === 'IN_GAME') {
+         p.status = 'PENALTY';
+         updateUserStatus(pId, 'PENALTY');
+         p.isAlive = false;
+         
+         const isMafia = p.role === 'MAFIA' || p.role === 'DON';
+         room.gameLog = room.gameLog || [];
+         room.gameLog.push(`Игрок ${p.nickname} позорно сбежал из города.`);
+         checkWinConditions(io, room.id);
+      }
+
       room.players = room.players.filter(id => id !== pId);
       
       if (room.players.length === 0) {
@@ -756,8 +861,14 @@ function resetStartTimer(io: Server<ClientToServerEvents, ServerToClientEvents>,
           room.hostId = room.players[0]; // pass host
         }
         if (room.status === 'STARTING') {
-          // Timer reset on leave!
-          resetStartTimer(io, roomId);
+          if (room.players.length < 4) {
+             clearInterval(startTimers[roomId]);
+             delete startTimers[roomId];
+             room.status = 'WAITING';
+             io.to(roomId).emit('startCanceled', 'Старт отменен: недостаточно игроков');
+          } else {
+             resetStartTimer(io, roomId);
+          }
         }
       }
     }

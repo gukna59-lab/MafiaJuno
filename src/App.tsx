@@ -87,9 +87,52 @@ function MainMenu() {
   };
 
   const [activeTab, setActiveTab] = useState<'ROOMS' | 'SHOP'>('ROOMS');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Users currently online in the menu (including self for now, or filter out)
+  const onlinePlayers = Object.values(players).filter(p => p.status === 'IN_MENU' || p.status === 'IN_ROOM');
 
   return (
     <div className="max-w-4xl mx-auto p-4 flex flex-col gap-6 min-h-screen">
+      {/* Drawer */}
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsDrawerOpen(false)}></div>
+          <div className="relative w-72 bg-slate-900 border-r border-slate-800 h-full shadow-2xl flex flex-col p-4 animate-in slide-in-from-left">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><Users size={20}/> Онлайн ({onlinePlayers.length})</h2>
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {onlinePlayers.map(p => (
+                <div key={p.id} className="flex justify-between items-center bg-slate-800 p-2 rounded relative group cursor-default">
+                  <div className="flex items-center gap-2 overflow-hidden pointer-events-none">
+                     {p.avatar ? (
+                       <img src={p.avatar} alt="Avatar" className="w-8 h-8 rounded-full border border-slate-700 object-cover shrink-0" />
+                     ) : (
+                       <div className="w-8 h-8 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center font-bold shrink-0">{p.nickname.charAt(0).toUpperCase()}</div>
+                     )}
+                     <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate text-sm" style={{color: p.vipColor || undefined}}>{p.nickname} {p.id === myId && "(Ты)"}</span>
+                        <span className="text-xs text-slate-400">{p.status === 'IN_ROOM' ? 'В комнате' : 'В меню'}</span>
+                     </div>
+                  </div>
+                  {p.id !== myId && p.status === 'IN_ROOM' && p.roomId && (
+                    <button 
+                      onClick={() => {
+                        socket?.emit('joinRoom', p.roomId);
+                        setIsDrawerOpen(false);
+                      }}
+                      className="text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition absolute right-2"
+                    >
+                      Войти
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setIsDrawerOpen(false)} className="mt-4 w-full bg-slate-800 p-2 rounded text-slate-400 hover:text-white font-medium">Закрыть</button>
+          </div>
+        </div>
+      )}
+
       <header className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
         <div className="flex items-center gap-4 cursor-pointer hover:bg-slate-800 p-2 rounded-lg transition" title="Изменить профиль" onClick={handleEditProfile}>
           {me?.avatar ? (
@@ -105,6 +148,13 @@ function MainMenu() {
           </div>
         </div>
         <div className="flex gap-4 items-center">
+          <button 
+            onClick={() => setIsDrawerOpen(true)}
+            className="text-slate-400 hover:text-white bg-slate-800 p-2 rounded-lg transition hidden md:block" title="Список друзей (Онлайн)"
+          >
+             <Users size={20} />
+          </button>
+          
           <div className="flex gap-2 bg-slate-800 p-1 rounded-lg">
             <button onClick={() => setActiveTab('ROOMS')} className={cn("px-4 py-1.5 rounded-md text-sm font-bold transition", activeTab === 'ROOMS' ? "bg-slate-700 text-white" : "text-slate-400")}>Игры</button>
             <button onClick={() => setActiveTab('SHOP')} className={cn("px-4 py-1.5 rounded-md text-sm font-bold transition", activeTab === 'SHOP' ? "bg-slate-700 text-white" : "text-slate-400")}>Магазин</button>
@@ -164,12 +214,27 @@ function MainMenu() {
                   <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
                     <span className="font-bold text-rose-400">VIP-ник (Розовый)</span>
                     <span className="text-sm text-slate-400">Сделай свой ник выделяющимся в лобби и чате.</span>
-                    <button onClick={() => socket?.emit('buyItem', 'color_#fb7185')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить за 50 🪙</button>
+                    <button onClick={() => socket?.emit('buyItem', 'color_#fb7185')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить (50 🪙)</button>
                   </div>
                   <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
                     <span className="font-bold text-emerald-400">VIP-ник (Зеленый)</span>
                     <span className="text-sm text-slate-400">Сделай свой ник выделяющимся в лобби и чате.</span>
-                    <button onClick={() => socket?.emit('buyItem', 'color_#34d399')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить за 50 🪙</button>
+                    <button onClick={() => socket?.emit('buyItem', 'color_#34d399')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить (50 🪙)</button>
+                  </div>
+                  <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
+                    <span className="font-bold text-indigo-400 flex items-center gap-1"><ShieldAlert size={16}/> Бронежилет</span>
+                    <span className="text-sm text-slate-400">Защитит вас от одного выстрела мафии ночью в следующей игре.</span>
+                    <button onClick={() => socket?.emit('buyItem', 'armor')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить (100 🪙)</button>
+                  </div>
+                  <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
+                    <span className="font-bold text-rose-500 flex items-center gap-1">Контракт Дона</span>
+                    <span className="text-sm text-slate-400">Повышает шанс стать Доном мафии в вашей следующей игре (1 раз).</span>
+                    <button onClick={() => socket?.emit('buyItem', 'boost_don')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить (100 🪙)</button>
+                  </div>
+                  <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
+                    <span className="font-bold text-blue-400 flex items-center gap-1">Звезда Шерифа</span>
+                    <span className="text-sm text-slate-400">Повышает шанс стать Шерифом в вашей следующей игре (1 раз).</span>
+                    <button onClick={() => socket?.emit('buyItem', 'boost_sheriff')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить (100 🪙)</button>
                   </div>
                </div>
             </div>
@@ -358,7 +423,8 @@ function RoomView() {
            <div className="p-3 font-semibold border-b border-slate-800 flex justify-between items-center">
              <span>Игроки ({room.players.length})</span>
            </div>
-           <div className="flex-1 overflow-y-auto p-2 space-y-1">
+           <div className="flex-1 overflow-y-auto p-2">
+             <div className="grid grid-cols-2 gap-1">
              {room.players.map(pid => {
                const p = players[pid];
                if(!p) return null;
@@ -371,33 +437,37 @@ function RoomView() {
                    key={pid} 
                    onClick={() => handlePlayerAction(pid)}
                    className={cn(
-                      "p-2 rounded flex justify-between items-center group transition",
+                      "p-1.5 rounded flex items-center group transition text-xs overflow-hidden relative",
                       (isVoting || isNight || (room.status === 'WAITING' && isHost)) && pid !== myId ? "hover:bg-slate-700 cursor-pointer" : "cursor-default hover:bg-slate-800",
                       isTargeted && "ring-1 ring-rose-500 bg-rose-500/10",
-                      p.isAlive === false && "opacity-40 grayscale"
+                      p.isAlive === false && "opacity-40 grayscale blur-[0.5px]"
                    )}
                  >
-                   <div className="flex items-center gap-2 overflow-hidden pointer-events-none">
+                   <div className="flex items-center gap-1.5 overflow-hidden pointer-events-none w-full">
                      {p.avatar ? (
-                       <img src={p.avatar} alt="Avatar" className="w-6 h-6 rounded-full border border-slate-700 object-cover shrink-0" />
+                       <img src={p.avatar} alt="Avatar" className="w-5 h-5 rounded-full border border-slate-700 object-cover shrink-0" />
                      ) : (
-                       <div className="w-6 h-6 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center text-xs shrink-0">{p.nickname.charAt(0).toUpperCase()}</div>
+                       <div className="w-5 h-5 bg-slate-700 text-slate-300 rounded-full flex items-center justify-center shrink-0">{p.nickname.charAt(0).toUpperCase()}</div>
                      )}
-                     <div className="flex flex-col">
-                        <span className="text-sm font-medium truncate">{p.nickname} {pid === room.hostId && "👑"}</span>
-                        {p.isAlive === false && <span className="text-[10px] text-red-400">Мертв ({p.role})</span>}
+                     <div className="flex flex-col min-w-0 flex-1">
+                        <span className="font-medium truncate text-white" style={{color: p.vipColor || undefined}}>{p.nickname} {pid === room.hostId && "👑"}</span>
+                        {p.isAlive === false && <span className="text-[9px] text-red-400 truncate">Мертв ({p.role})</span>}
+                        {p.role && p.isAlive && room.status === 'FINISHED' && <span className="text-[9px] text-indigo-300 truncate">{p.role}</span>}
                      </div>
                    </div>
-                   <button 
-                     onClick={(e) => handleReport(pid, e)}
-                     className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition px-2" 
-                     title="Пожаловаться"
-                   >
-                     <Flag size={14}/>
-                   </button>
+                   <div className="absolute right-0 top-0 bottom-0 bg-gradient-to-l from-slate-800 to-transparent flex items-center justify-end px-1 opacity-0 group-hover:opacity-100 transition z-10">
+                     <button 
+                       onClick={(e) => handleReport(pid, e)}
+                       className="text-slate-500 hover:text-red-400 p-1" 
+                       title="Пожаловаться"
+                     >
+                       <Flag size={12}/>
+                     </button>
+                   </div>
                  </div>
                );
              })}
+             </div>
            </div>
            
            {isHost && room.status === 'WAITING' && (
