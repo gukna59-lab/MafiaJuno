@@ -15,6 +15,8 @@ export interface Player {
   inventory?: string[];
   activeEffects?: string[]; // e.g., 'BARTENDER', 'ARMOR'
   vipColor?: string;
+  matchesPlayed?: number;
+  wins?: number;
 }
 
 export type GamePhase = 'DAY' | 'VOTING' | 'NIGHT' | 'RESULTS';
@@ -68,6 +70,7 @@ export interface ServerToClientEvents {
   startCanceled: (msg: string) => void;
   gameStarted: (roomId: string) => void;
   kickVoteStarted: (vote: KickVote) => void;
+  invited: (data: { roomId: string; roomName: string; fromName: string }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -89,4 +92,5 @@ export interface ClientToServerEvents {
 
   reportPlayer: (targetId: string, reason: string, comment: string) => void;
   adminAction: (action: string, payload: any) => void; // Simple admin RPC
+  invitePlayer: (targetId: string) => void;
 }

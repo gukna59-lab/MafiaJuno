@@ -5,7 +5,7 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import TelegramBot from 'node-telegram-bot-api';
 import { Player, Room, PlayerMap, RoomMap, ChatMessage, ClientToServerEvents, ServerToClientEvents } from './src/types.js';
-import { getUser, createUser, updateUserStatus, banUser, unbanUser, updateProfileInDb, spendCoins, updateVipColor } from './src/db.js';
+import { getUser, createUser, updateUserStatus, banUser, unbanUser, updateProfileInDb, spendCoins, updateVipColor, addStats } from './src/db.js';
 
 // Setup Telegram Bot if token exists
 // You can get real-time info and manage users via the bot.
@@ -124,6 +124,8 @@ async function startServer() {
         coins: dbUser.coins,
         status: dbUser.status as any,
         vipColor: dbUser.vip_color,
+        matchesPlayed: dbUser.matches_played,
+        wins: dbUser.wins,
       };
 
       if (dbUser.status === 'PENALTY') {
@@ -470,6 +472,27 @@ async function startServer() {
     });
 
     // Report system
+    socket.on('invitePlayer', (targetId) => {
+      const pId = socketToPlayerId[socket.id];
+      const p = players[pId];
+      const target = players[targetId];
+
+      if (p && p.roomId && target && target.status === 'IN_MENU') {
+        const room = rooms[p.roomId];
+        if (room && room.players.length < room.maxPlayers && target.socketId) {
+          // Find all sockets for target
+          const targetSockets = Object.keys(socketToPlayerId).filter(sid => socketToPlayerId[sid] === targetId);
+          targetSockets.forEach(sid => {
+            io.to(sid).emit('invited', {
+              roomId: room.id,
+              roomName: room.name,
+              fromName: p.nickname
+            });
+          });
+        }
+      }
+    });
+
     socket.on('reportPlayer', (targetId, reason, comment) => {
       if (bot && TELEGRAM_ADMIN_ID) {
         const pId = socketToPlayerId[socket.id];
@@ -774,7 +797,18 @@ function endGame(io: Server<ClientToServerEvents, ServerToClientEvents>, roomId:
        if (p) {
           if (p.status === 'IN_GAME') {
              p.status = 'IN_ROOM';
-             p.coins += 10; // Simple reward
+             
+             // Calculate if this player won based on factions
+             let isWin = false;
+             if (winner === 'TOWN' && p.role && !['MAFIA', 'DON', 'JESTER'].includes(p.role)) isWin = true;
+             else if (winner === 'MAFIA' && ['MAFIA', 'DON'].includes(p.role!)) isWin = true;
+             else if (winner === 'JESTER' && p.role === 'JESTER') isWin = true;
+
+             p.coins += isWin ? 30 : 10;
+             p.matchesPlayed = (p.matchesPlayed || 0) + 1;
+             if (isWin) p.wins = (p.wins || 0) + 1;
+
+             addStats(pid, isWin); // from DB
              updateUserStatus(pid, 'IN_ROOM');
           }
           p.role = undefined;

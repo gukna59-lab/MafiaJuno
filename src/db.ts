@@ -36,6 +36,12 @@ try {
 } catch (e) {
   // Ignore
 }
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN matches_played INTEGER DEFAULT 0;`);
+  db.exec(`ALTER TABLE users ADD COLUMN wins INTEGER DEFAULT 0;`);
+} catch (e) {
+  // Ignore
+}
 
 export interface DBUser {
   id: string;
@@ -45,6 +51,12 @@ export interface DBUser {
   status: string;
   is_banned: number;
   vip_color: string;
+  matches_played: number;
+  wins: number;
+}
+
+export function addStats(id: string, isWin: boolean) {
+   db.prepare('UPDATE users SET matches_played = matches_played + 1, wins = wins + ? WHERE id = ?').run(isWin ? 1 : 0, id);
 }
 
 export function getUser(id: string): DBUser | undefined {

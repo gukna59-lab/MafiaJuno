@@ -164,6 +164,17 @@ function MainMenu() {
                       Войти
                     </button>
                   )}
+                  {p.id !== myId && p.status === 'IN_MENU' && me?.roomId && (
+                    <button 
+                      onClick={() => {
+                        socket?.emit('invitePlayer', p.id);
+                        document.dispatchEvent(new CustomEvent('toast', { detail: 'Приглашение отправлено' }));
+                      }}
+                      className="text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition absolute right-2"
+                    >
+                      Позвать
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -185,8 +196,12 @@ function MainMenu() {
             )}
           </div>
           <div className="cursor-pointer hover:bg-slate-800 p-2 rounded-lg transition" title="Изменить профиль" onClick={handleEditProfile}>
-            <h2 className="font-bold text-lg" style={{color: me?.vipColor || 'white'}}>{me?.nickname}</h2>
-            <div className="text-sm text-yellow-500 font-medium">{me?.coins} монет</div>
+            <h2 className="font-bold text-lg leading-tight" style={{color: me?.vipColor || 'white'}}>{me?.nickname}</h2>
+            <div className="flex gap-3 text-xs font-medium mt-1">
+              <span className="text-yellow-500">{me?.coins} 🪙</span>
+              <span className="text-emerald-400">{me?.wins || 0} Поб.</span>
+              <span className="text-slate-400">{me?.matchesPlayed || 0} Игр</span>
+            </div>
           </div>
         </div>
         <div className="flex gap-4 items-center">
@@ -375,17 +390,35 @@ function RoomView() {
         </div>
         <div className="flex items-center gap-3">
            {room.status === 'IN_GAME' && me.role && (
-             <div className="relative">
-                <button onMouseEnter={() => setShowRoleInfo(true)} onMouseLeave={() => setShowRoleInfo(false)} className="bg-indigo-900/50 text-indigo-300 border border-indigo-700/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">
-                   <Info size={16}/> Твоя роль: {me.role}
+             <>
+                <button onClick={() => setShowRoleInfo(true)} className="bg-indigo-900/50 text-indigo-300 border border-indigo-700/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg h-9 hover:bg-indigo-800 transition">
+                   <Info size={16}/> Роль
                 </button>
                 {showRoleInfo && (
-                   <div className="absolute top-full right-0 mt-2 w-64 bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-2xl z-50 animate-in fade-in zoom-in-95">
-                      <h4 className="font-bold text-white mb-1">{me.role}</h4>
-                      <p className="text-sm text-slate-300">{roleDesc[me.role]}</p>
+                   <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setShowRoleInfo(false)}></div>
+                      <div className="relative w-full max-w-sm bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-8 flex flex-col items-center text-center animate-in zoom-in-95 fade-in duration-300">
+                         <button onClick={() => setShowRoleInfo(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-full"><LogOut size={16} className="rotate-180"/></button>
+                         <div className={cn(
+                            "w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-inner border-[6px]",
+                            ['DON', 'MAFIA'].includes(me.role) ? 'bg-red-950/80 border-red-500/50 text-red-500 shadow-red-900/50' :
+                            ['JESTER', 'TERRORIST', 'BARTENDER'].includes(me.role) ? 'bg-amber-950/80 border-amber-500/50 text-amber-500 shadow-amber-900/50' :
+                            'bg-blue-950/80 border-blue-500/50 text-blue-500 shadow-blue-900/50'
+                         )}>
+                            <span className="font-extrabold text-4xl">{me.role.charAt(0)}</span>
+                         </div>
+                         <h4 className={cn("font-black text-3xl uppercase tracking-widest mb-3", 
+                            ['DON', 'MAFIA'].includes(me.role) ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]' :
+                            ['JESTER', 'TERRORIST', 'BARTENDER'].includes(me.role) ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]' :
+                            'text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]'
+                         )}>{me.role}</h4>
+                         <p className="text-base text-slate-300 font-medium leading-relaxed max-w-[250px]">
+                           {roleDesc[me.role]}
+                         </p>
+                      </div>
                    </div>
                 )}
-             </div>
+             </>
            )}
            <button onClick={() => socket?.emit('leaveRoom')} className="text-slate-400 hover:text-white p-2">
              <LogOut size={20}/>
@@ -535,6 +568,7 @@ function RoomView() {
 // Main
 export default function App() {
   const { socket, myId, players, error, connect } = useStore();
+  const [inviteData, setInviteData] = useState<{roomId: string, roomName: string, fromName: string} | null>(null);
 
   useEffect(() => {
     // Hide standard frame limits, this is a web app.
@@ -548,6 +582,22 @@ export default function App() {
       connect({ id: String(user.id), nickname: user.first_name || user.username || 'Игрок', avatar: user.photo_url });
     }
   }, []);
+
+  useEffect(() => {
+    if (socket) {
+       socket.on('invited', (data) => {
+          setInviteData(data);
+       });
+       
+       const toastListener = (e: any) => alert(e.detail);
+       document.addEventListener('toast', toastListener as EventListener);
+       
+       return () => {
+          socket.off('invited');
+          document.removeEventListener('toast', toastListener as EventListener);
+       }
+    }
+  }, [socket]);
 
   if (!socket || !myId) {
     return <NicknameScreen onJoin={(name) => {
@@ -570,6 +620,31 @@ export default function App() {
         <div className="fixed top-4 right-4 bg-red-600/90 backdrop-blur text-white px-4 py-3 rounded-xl shadow-lg z-50 animate-in slide-in-from-top flex items-center gap-3 max-w-sm">
            <ShieldAlert size={20} />
            <p className="text-sm font-medium">{error}</p>
+        </div>
+      )}
+
+      {inviteData && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-indigo-900 border border-indigo-700 text-white px-4 py-3 rounded-xl shadow-2xl z-50 animate-in slide-in-from-top flex flex-col gap-2 min-w-[280px]">
+           <div className="flex items-center gap-2">
+             <MessageSquare size={16} className="text-indigo-400"/>
+             <span className="font-bold text-sm">Приглашение в игру</span>
+           </div>
+           <p className="text-sm text-slate-300">
+             <strong className="text-white">{inviteData.fromName}</strong> зовет вас в комнату: <br/><strong className="text-indigo-200">{inviteData.roomName}</strong>
+           </p>
+           <div className="flex gap-2 mt-2">
+             <button 
+               onClick={() => {
+                 socket?.emit('joinRoom', inviteData.roomId);
+                 setInviteData(null);
+               }}
+               className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded-lg text-xs font-bold transition"
+             >Принять</button>
+             <button 
+               onClick={() => setInviteData(null)}
+               className="flex-1 bg-slate-800 hover:bg-slate-700 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white"
+             >Отклонить</button>
+           </div>
         </div>
       )}
       
