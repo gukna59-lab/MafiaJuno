@@ -52,7 +52,7 @@ export function getUser(id: string): DBUser | undefined {
 }
 
 export function createUser(id: string, nickname: string, avatar: string = ''): DBUser {
-  db.prepare('INSERT OR IGNORE INTO users (id, nickname, avatar, coins, status, is_banned, vip_color) VALUES (?, ?, ?, 0, ?, 0, "")')
+  db.prepare("INSERT OR IGNORE INTO users (id, nickname, avatar, coins, status, is_banned, vip_color) VALUES (?, ?, ?, 0, ?, 0, '')")
     .run(id, nickname, avatar, 'IN_MENU');
   return getUser(id)!;
 }
