@@ -5,7 +5,7 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import TelegramBot from 'node-telegram-bot-api';
 import { Player, Room, PlayerMap, RoomMap, ChatMessage, ClientToServerEvents, ServerToClientEvents } from './src/types.js';
-import { getUser, createUser, updateUserStatus, banUser, unbanUser, updateProfileInDb } from './src/db.js';
+import { getUser, createUser, updateUserStatus, banUser, unbanUser, updateProfileInDb, spendCoins, updateVipColor } from './src/db.js';
 
 // Setup Telegram Bot if token exists
 // You can get real-time info and manage users via the bot.
@@ -98,6 +98,7 @@ async function startServer() {
         avatar: dbUser.avatar,
         coins: dbUser.coins,
         status: dbUser.status as any,
+        vipColor: dbUser.vip_color,
       };
 
       if (dbUser.status === 'PENALTY') {
@@ -116,6 +117,27 @@ async function startServer() {
         p.nickname = nickname;
         p.avatar = avatar;
         broadcastState(io);
+      }
+    });
+
+    socket.on('buyItem', (itemId) => {
+      const pId = socketToPlayerId[socket.id];
+      const p = players[pId];
+      if (!p) return;
+
+      if (itemId.startsWith('color_')) {
+         const color = itemId.split('_')[1];
+         if (p.coins >= 50) {
+            if (spendCoins(pId, 50)) {
+               updateVipColor(pId, color);
+               p.coins -= 50;
+               p.vipColor = color;
+               socket.emit('error', 'Цвет ника успешно куплен!'); // abuse error for toast
+               broadcastState(io);
+            }
+         } else {
+            socket.emit('error', 'Недостаточно монет (нужно 50).');
+         }
       }
     });
 
@@ -346,11 +368,17 @@ async function startServer() {
       const p = players[pId];
       if (!p) return;
       
+      // Bartender effect
+      let finalText = text;
+      if (p.activeEffects && p.activeEffects.includes('BARTENDER') && !isGlobal) {
+          finalText = text.split('').sort(() => 0.5 - Math.random()).join('') + ' ...ик...';
+      }
+
       const msg: ChatMessage = {
         id: Math.random().toString(),
         senderId: pId,
         senderName: p.nickname,
-        text,
+        text: finalText,
         timestamp: Date.now(),
         isGlobal,
         roomId: p.roomId,
@@ -418,7 +446,7 @@ function getRolesForPlayerCount(count: number): string[] {
   } else if (count === 7) {
     roles.push('CITIZEN', 'JESTER', 'MAFIA', 'MEDIUM');
   } else if (count >= 8) {
-    roles.push('CITIZEN', 'JESTER', 'MAFIA', 'MEDIUM', 'TERRORIST');
+    roles.push('CITIZEN', 'JESTER', 'MAFIA', 'MEDIUM', 'TERRORIST', 'BARTENDER');
     // Add more citizens for remaining
     while(roles.length < count) roles.push('CITIZEN');
   }
@@ -567,6 +595,39 @@ function advancePhase(io: Server<ClientToServerEvents, ServerToClientEvents>, ro
       }
 
       if (checkWinConditions(io, roomId)) return;
+
+      // Send sheriff result privately
+      if (sheriffTarget) {
+         const t = players[sheriffTarget];
+         const sheriffId = room.players.find(pid => players[pid]?.role === 'SHERIFF' && players[pid]?.isAlive);
+         if (t && sheriffId) {
+            const isMafia = t.role === 'MAFIA' || t.role === 'DON';
+            const sheriffSocketId = Object.entries(socketToPlayerId).find(([sid, dbid]) => dbid === sheriffId);
+            if (sheriffSocketId) {
+                io.to(sheriffSocketId[0]).emit('chatMessage', {
+                  id: Math.random().toString(),
+                  senderId: 'system',
+                  senderName: 'Проверка шерифа',
+                  text: `Игрок ${t.nickname} — ${isMafia ? 'МАФИЯ' : 'МИРНЫЙ'}.`,
+                  timestamp: Date.now(),
+                  isGlobal: false,
+                  roomId: room.id,
+                  isSystem: true
+                });
+            }
+         }
+      }
+
+      // Bartender action
+      room.players.forEach(pid => {
+         const p = players[pid];
+         if (p && p.activeEffects) p.activeEffects = []; // reset daily effects
+      });
+      const bartenderTarget = room.nightActions?.['BARTENDER'];
+      if (bartenderTarget) {
+         const bt = players[bartenderTarget];
+         if (bt && bt.isAlive) bt.activeEffects!.push('BARTENDER');
+      }
 
       room.dayCount = (room.dayCount || 1) + 1;
       startPhaseTimer(io, roomId, 'RESULTS');

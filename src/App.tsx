@@ -86,6 +86,8 @@ function MainMenu() {
     }
   };
 
+  const [activeTab, setActiveTab] = useState<'ROOMS' | 'SHOP'>('ROOMS');
+
   return (
     <div className="max-w-4xl mx-auto p-4 flex flex-col gap-6 min-h-screen">
       <header className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
@@ -98,54 +100,80 @@ function MainMenu() {
             </div>
           )}
           <div>
-            <h2 className="font-bold text-lg">{me?.nickname}</h2>
+            <h2 className="font-bold text-lg" style={{color: me?.vipColor || 'white'}}>{me?.nickname}</h2>
             <div className="text-sm text-yellow-500 font-medium">{me?.coins} монет</div>
           </div>
         </div>
-        <div className="text-slate-400 flex items-center gap-2">
-          {me?.status === 'PENALTY' && (
-            <span className="bg-red-900/50 text-red-400 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
-              <ShieldAlert size={14}/> Штраф
-            </span>
-          )}
+        <div className="flex gap-4 items-center">
+          <div className="flex gap-2 bg-slate-800 p-1 rounded-lg">
+            <button onClick={() => setActiveTab('ROOMS')} className={cn("px-4 py-1.5 rounded-md text-sm font-bold transition", activeTab === 'ROOMS' ? "bg-slate-700 text-white" : "text-slate-400")}>Игры</button>
+            <button onClick={() => setActiveTab('SHOP')} className={cn("px-4 py-1.5 rounded-md text-sm font-bold transition", activeTab === 'SHOP' ? "bg-slate-700 text-white" : "text-slate-400")}>Магазин</button>
+          </div>
+          <div className="text-slate-400 flex items-center gap-2">
+            {me?.status === 'PENALTY' && (
+              <span className="bg-red-900/50 text-red-400 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
+                <ShieldAlert size={14}/> Штраф
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 flex flex-col gap-4">
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-            <h2 className="font-semibold text-lg flex items-center gap-2"><Users size={20}/> Список комнат</h2>
-            <button 
-              onClick={() => socket?.emit('createRoom', `${me?.nickname}'s Room`, false, 10)}
-              className="bg-rose-600 hover:bg-rose-700 px-4 py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
-              disabled={me?.status === 'PENALTY'}
-            >
-              Создать игру
-            </button>
-          </div>
-          
-          <div className="space-y-3">
-            {Object.values(rooms).length === 0 ? (
-              <div className="text-center p-8 text-slate-500 border border-slate-800 border-dashed rounded-xl">
-                Нет активных комнат
+          {activeTab === 'ROOMS' ? (
+            <>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                <h2 className="font-semibold text-lg flex items-center gap-2"><Users size={20}/> Список комнат</h2>
+                <button 
+                  onClick={() => socket?.emit('createRoom', `${me?.nickname}'s Room`, false, 10)}
+                  className="bg-rose-600 hover:bg-rose-700 px-4 py-2 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                  disabled={me?.status === 'PENALTY'}
+                >
+                  Создать игру
+                </button>
               </div>
-            ) : (
-              Object.values(rooms).map(room => (
-                <div key={room.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold">{room.name}</h3>
-                    <div className="text-sm text-slate-400">{room.players.length}/{room.maxPlayers} игроков • {room.status}</div>
+              
+              <div className="space-y-3">
+                {Object.values(rooms).length === 0 ? (
+                  <div className="text-center p-8 text-slate-500 border border-slate-800 border-dashed rounded-xl">
+                    Нет активных комнат
                   </div>
-                  <button 
-                    onClick={() => socket?.emit('joinRoom', room.id)}
-                    className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Войти
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+                ) : (
+                  Object.values(rooms).map(room => (
+                    <div key={room.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <h3 className="font-bold">{room.name}</h3>
+                        <div className="text-sm text-slate-400">{room.players.length}/{room.maxPlayers} игроков • {room.status}</div>
+                      </div>
+                      <button 
+                        onClick={() => socket?.emit('joinRoom', room.id)}
+                        className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Войти
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+               <h2 className="font-bold text-xl mb-4 text-yellow-400">Магазин (твой баланс: {me?.coins} 🪙)</h2>
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
+                    <span className="font-bold text-rose-400">VIP-ник (Розовый)</span>
+                    <span className="text-sm text-slate-400">Сделай свой ник выделяющимся в лобби и чате.</span>
+                    <button onClick={() => socket?.emit('buyItem', 'color_#fb7185')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить за 50 🪙</button>
+                  </div>
+                  <div className="flex flex-col gap-2 p-4 border border-slate-700 rounded-xl bg-slate-800/50">
+                    <span className="font-bold text-emerald-400">VIP-ник (Зеленый)</span>
+                    <span className="text-sm text-slate-400">Сделай свой ник выделяющимся в лобби и чате.</span>
+                    <button onClick={() => socket?.emit('buyItem', 'color_#34d399')} className="mt-auto bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg text-white">Купить за 50 🪙</button>
+                  </div>
+               </div>
+            </div>
+          )}
           
           {me?.status === 'PENALTY' && (
              <div className="bg-red-950 border border-red-900 p-4 rounded-xl text-red-200 text-sm">
@@ -221,7 +249,8 @@ function RoomView() {
     'CITIZEN': 'Вычисли мафию на дневном обсуждении.',
     'MEDIUM': 'Читай ночной чат мафии, но не знай кто есть кто.',
     'JESTER': 'Сделай так, чтобы тебя казнили днем.',
-    'TERRORIST': 'Если тебя казнят, ты заберешь одного из голосовавших с собой.'
+    'TERRORIST': 'Если тебя казнят, ты заберешь одного из голосовавших с собой.',
+    'BARTENDER': 'Спаивай одну цель ночью. Завтра ее слова в чате будут перепутаны!'
   };
 
   return (
@@ -303,7 +332,7 @@ function RoomView() {
                       <span className="text-yellow-500 font-bold">⚙ Система: {m.text}</span>
                    ) : (
                      <>
-                        <strong className={cn(m.senderId === myId ? "text-rose-400" : "text-blue-400", m.isMafiaOnly && "text-red-500")}>
+                        <strong className={cn(m.senderId === myId ? "text-rose-400" : "text-blue-400", m.isMafiaOnly && "text-red-500")} style={{color: players[m.senderId]?.vipColor || undefined}}>
                         {m.senderName}: 
                         </strong> <span className={cn("text-slate-300", m.isMafiaOnly && "text-red-200")}>{m.text}</span>
                      </>

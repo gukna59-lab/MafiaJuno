@@ -20,7 +20,8 @@ db.exec(`
     avatar TEXT DEFAULT '',
     coins INTEGER DEFAULT 0,
     status TEXT DEFAULT 'IN_MENU',
-    is_banned INTEGER DEFAULT 0
+    is_banned INTEGER DEFAULT 0,
+    vip_color TEXT DEFAULT ''
   )
 `);
 
@@ -28,6 +29,11 @@ try {
   db.exec(`ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT '';`);
 } catch (e) {
   // Ignore if column already exists
+}
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN vip_color TEXT DEFAULT '';`);
+} catch (e) {
+  // Ignore
 }
 
 export interface DBUser {
@@ -37,6 +43,7 @@ export interface DBUser {
   coins: number;
   status: string;
   is_banned: number;
+  vip_color: string;
 }
 
 export function getUser(id: string): DBUser | undefined {
@@ -44,13 +51,24 @@ export function getUser(id: string): DBUser | undefined {
 }
 
 export function createUser(id: string, nickname: string, avatar: string = ''): DBUser {
-  db.prepare('INSERT OR IGNORE INTO users (id, nickname, avatar, coins, status, is_banned) VALUES (?, ?, ?, 0, ?, 0)')
+  db.prepare('INSERT OR IGNORE INTO users (id, nickname, avatar, coins, status, is_banned, vip_color) VALUES (?, ?, ?, 0, ?, 0, "")')
     .run(id, nickname, avatar, 'IN_MENU');
   return getUser(id)!;
 }
 
 export function updateProfileInDb(id: string, nickname: string, avatar: string) {
   db.prepare('UPDATE users SET nickname = ?, avatar = ? WHERE id = ?').run(nickname, avatar, id);
+}
+
+export function updateVipColor(id: string, color: string) {
+  db.prepare('UPDATE users SET vip_color = ? WHERE id = ?').run(color, id);
+}
+
+export function spendCoins(id: string, amount: number): boolean {
+  const user = getUser(id);
+  if (!user || user.coins < amount) return false;
+  db.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(amount, id);
+  return true;
 }
 
 export function updateUserStatus(id: string, status: string) {
