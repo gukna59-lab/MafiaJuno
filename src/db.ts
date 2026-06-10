@@ -15,7 +15,13 @@ try {
 }
 
 const dbPath = path.join(dbDir, 'mafia_juno.db');
-const db = new Database(dbPath);
+let db;
+try {
+  db = new Database(dbPath);
+} catch (e) {
+  console.warn(`Failed to open database at ${dbPath}, falling back to in-memory database.`);
+  db = new Database(':memory:');
+}
 
 db.pragma('journal_mode = WAL');
 
