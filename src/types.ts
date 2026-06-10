@@ -59,6 +59,7 @@ export interface ChatMessage {
 
 export interface ServerToClientEvents {
   stateSync: (data: { players: PlayerMap; rooms: RoomMap }) => void;
+  myProfile: (profile: Player) => void;
   chatMessage: (msg: ChatMessage) => void;
   error: (msg: string) => void;
   kicked: () => void;

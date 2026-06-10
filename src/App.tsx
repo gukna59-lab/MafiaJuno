@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from './store.js';
 import { LogOut, Users, MessageSquare, Play, Info, ShieldAlert, Flag } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -78,12 +78,51 @@ function GlobalChat() {
 function MainMenu() {
   const { players, rooms, socket, myId } = useStore();
   const me = myId ? players[myId] : null;
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleEditProfile = () => {
     const newNick = window.prompt('Новый никнейм:', me?.nickname);
     if (newNick && newNick.trim() && socket) {
         socket.emit('updateProfile', newNick.trim(), me?.avatar || '');
     }
+  };
+
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+           const result = event.target?.result as string;
+           const img = new Image();
+           img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 256;
+              const MAX_HEIGHT = 256;
+              let width = img.width;
+              let height = img.height;
+              
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, width, height);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+              socket?.emit('updateProfile', me?.nickname || 'Player', dataUrl);
+           };
+           img.src = result;
+        };
+        reader.readAsDataURL(file);
+     }
   };
 
   const [activeTab, setActiveTab] = useState<'ROOMS' | 'SHOP'>('ROOMS');
@@ -134,15 +173,18 @@ function MainMenu() {
       )}
 
       <header className="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
-        <div className="flex items-center gap-4 cursor-pointer hover:bg-slate-800 p-2 rounded-lg transition" title="Изменить профиль" onClick={handleEditProfile}>
-          {me?.avatar ? (
-            <img src={me.avatar} alt="Avatar" className="w-12 h-12 rounded-full border border-slate-700 object-cover" />
-          ) : (
-            <div className="w-12 h-12 bg-rose-900 text-rose-200 rounded-full flex items-center justify-center font-bold text-xl">
-               {me?.nickname.charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div>
+        <div className="flex items-center gap-4">
+          <input type="file" ref={fileInputRef} onChange={handleAvatarSelect} className="hidden" accept="image/*" />
+          <div className="cursor-pointer hover:opacity-80 transition" title="Изменить аватарку" onClick={() => fileInputRef.current?.click()}>
+            {me?.avatar ? (
+              <img src={me.avatar} alt="Avatar" className="w-12 h-12 rounded-full border border-slate-700 object-cover" />
+            ) : (
+              <div className="w-12 h-12 bg-rose-900 text-rose-200 rounded-full flex items-center justify-center font-bold text-xl">
+                 {me?.nickname.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="cursor-pointer hover:bg-slate-800 p-2 rounded-lg transition" title="Изменить профиль" onClick={handleEditProfile}>
             <h2 className="font-bold text-lg" style={{color: me?.vipColor || 'white'}}>{me?.nickname}</h2>
             <div className="text-sm text-yellow-500 font-medium">{me?.coins} монет</div>
           </div>
@@ -295,8 +337,10 @@ function RoomView() {
   };
 
   const handlePlayerAction = (targetId: string) => {
-     if (room.status === 'WAITING' && isHost) {
-        socket?.emit('proposeKick', targetId);
+     if (room.status === 'WAITING' && isHost && targetId !== myId) {
+        if (window.confirm(`Предложить кик игрока ${players[targetId]?.nickname}?`)) {
+           socket?.emit('proposeKick', targetId);
+        }
      } else if (room.status === 'IN_GAME') {
         if (isVoting) {
            socket?.emit('submitDayVote', targetId);

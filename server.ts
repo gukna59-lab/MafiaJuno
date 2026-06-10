@@ -82,7 +82,7 @@ const startTimers: Record<string, NodeJS.Timeout> = {};
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   const httpServer = createServer(app);
   
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
