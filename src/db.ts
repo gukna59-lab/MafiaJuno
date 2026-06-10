@@ -3,9 +3,15 @@ import path from 'path';
 import fs from 'fs';
 
 // Using a persistent location or fallback to current dir
-const dbDir = process.env.RENDER ? '/var/data' : process.cwd();
-if (process.env.RENDER && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+let dbDir = process.env.DB_DIR || (process.env.RENDER ? '/var/data' : process.cwd());
+
+try {
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn(`Could not create directory ${dbDir}, falling back to current working directory.`);
+  dbDir = process.cwd();
 }
 
 const dbPath = path.join(dbDir, 'mafia_juno.db');
